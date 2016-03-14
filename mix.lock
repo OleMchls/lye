@@ -1,0 +1,2 @@
+%{"hpack": {:hex, :hpack, "1.0.0"},
+  "ranch": {:hex, :ranch, "1.2.1"}}

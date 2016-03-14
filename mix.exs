@@ -14,7 +14,10 @@ defmodule Lye.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [applications: [:logger]]
+    [
+      mod: { Lye, [] },
+      applications: [:logger, :ranch]
+    ]
   end
 
   # Dependencies can be Hex packages:
@@ -27,6 +30,9 @@ defmodule Lye.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    []
+    [
+      { :ranch, "~> 1.2.1" },
+      { :hpack, "~> 1.0" }
+    ]
   end
 end

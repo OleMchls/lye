@@ -12,6 +12,10 @@ use Mix.Config
 #
 #     config :lye, key: :value
 #
+config :lye, port: 4443
+config :lye, certfile: "/Users/ole/.localhost-ssl/cert.pem"
+config :lye, keyfile: "/Users/ole/.localhost-ssl/key.pem"
+
 # And access this configuration in your application as:
 #
 #     Application.get_env(:lye, :key)
