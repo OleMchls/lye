@@ -22,7 +22,7 @@ defmodule Lye.Frames.Headers do
   # Figure 7: HEADERS Frame Payload
   def handle_event({:frame, 0x1, sid, flags, body, connection}, ctx) do
     Logger.debug inspect {:ok, :headers, sid, flags, body, connection}
-    # send connection, {:frame, << 0::100 >> }
+    Lye.Connection.send_frame(connection, {0x1, sid, flags, body})
     {:ok, ctx}
   end
 
