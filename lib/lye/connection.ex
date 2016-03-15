@@ -1,5 +1,6 @@
 defmodule Lye.Connection do
 
+  use GenServer
   require Logger
 
   @behaviour :ranch_protocol
@@ -7,11 +8,22 @@ defmodule Lye.Connection do
   alias Lye.Parser
 
   def start_link(ref, socket, transport, opts) do
-    pid = spawn_link(__MODULE__, :init, [ref, socket, transport, opts])
-    {:ok, pid}
+    GenServer.start_link(__MODULE__, [ref, socket, transport, opts])
   end
 
-  def init(ref, socket, transport, _opts \\ []) do
+  def init([ref, socket, transport, opts]) do
+    # little hack: defer loop_init until init has returned and thus ranch
+    # started the tcp server otherweise we would end up in a deadlock ranch
+    # waiting to return and init waiting to ack the connection.
+    GenServer.cast(self(), {:loop_init, [ref, socket, transport, opts]})
+    {:ok, []}
+  end
+
+  def handle_cast({:loop_init, [ref, socket, transport, opts]}, _) do
+    {:noreply, loop_init(ref, socket, transport, opts)}
+  end
+
+  def loop_init(ref, socket, transport, _opts \\ []) do
     :ok = :ranch.accept_ack(ref)
     :ok = Parser.handshake(fn(len) -> transport.recv(socket, len, 10) end)
     {:ok, events} = GenEvent.start_link([])
@@ -23,15 +35,7 @@ defmodule Lye.Connection do
     {:ok, sender} = Task.start_link(__MODULE__, :send_loop, [socket, transport])
     {:ok, receiver} = Task.start_link(__MODULE__, :recv_loop, [socket, transport, events, self()])
 
-    # TODO: replace with GenServer
-    loop(%Lye.Connection.Settings{}, sender)
-  end
-
-  def loop(settings, sender) do
-    receive do
-      {:frame, frame} -> send sender, {:frame, frame}
-    end
-    loop(settings, sender)
+    %{settings: %Lye.Connection.Settings{}, sender: sender}
   end
 
   # +-----------------------------------------------+
@@ -45,7 +49,12 @@ defmodule Lye.Connection do
   # +---------------------------------------------------------------+
   # Figure 1: Frame Layout
   def send_frame(pid, {type, sid, flags, body}) do
-    send pid, {:frame, << byte_size(body)::24, type::8, flags::8, 0::1, sid::31, body::binary >> }
+    GenServer.cast(pid, {:frame, << byte_size(body)::24, type::8, flags::8, 0::1, sid::31, body::binary >> })
+  end
+
+  def handle_cast({:frame, frame}, state) do
+    send state.sender, {:frame, frame}
+    {:noreply, state}
   end
 
   def recv_loop(socket, transport, event_bus, connection) do
