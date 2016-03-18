@@ -21,8 +21,8 @@ end
 ```
 
 ```elixir
-{:ok, _} = Lye::Plug.https MyPlug, []
-{:ok, #PID<...>}
+Lye::Plug.https MyPlug, []
+# => {:ok, #PID<...>}
 ```
 
 ### GenEvent (low level api)
