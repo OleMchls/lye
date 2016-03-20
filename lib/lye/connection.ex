@@ -52,20 +52,23 @@ defmodule Lye.Connection do
     GenServer.cast(pid, {:send_frame, << byte_size(body)::24, type::8, flags::8, 0::1, sid::31, body::binary >> })
   end
 
+  def recv_frame(pid, {type, sid, flags, body}) do
+    GenServer.cast(pid, {:recv_frame, type, sid, flags, body})
+  end
+
   def handle_cast({:send_frame, frame}, state) do
     send state.sender, {:frame, frame}
     {:noreply, state}
   end
 
-  def handle_cast({:recv_frame, type, sid, flags, body, connection}, state) do
-    GenEvent.notify(state.events, {:frame, type, sid, flags, body, connection})
+  def handle_cast({:recv_frame, type, sid, flags, body}, state) do
+    GenEvent.notify(state.events, {:frame, type, sid, flags, body, self()})
     {:noreply, state}
   end
 
   def recv_loop(socket, transport, connection) do
     {:ok, type, flags, sid, body} = Parser.parse_frame(fn(len) -> transport.recv(socket, len, :infinity) end)
-
-    GenServer.cast(connection, {:recv_frame, type, sid, flags, body, connection})
+    recv_frame(connection, {type, sid, flags, body})
 
     # case transport.recv(socket, 0, 5000) do
     #   {:ok, data} ->
