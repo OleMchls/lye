@@ -33,9 +33,9 @@ defmodule Lye.Connection do
     GenEvent.add_handler(events, Lye.Frames.Settings, [])
 
     {:ok, sender} = Task.start_link(__MODULE__, :send_loop, [socket, transport])
-    {:ok, receiver} = Task.start_link(__MODULE__, :recv_loop, [socket, transport, events, self()])
+    {:ok, receiver} = Task.start_link(__MODULE__, :recv_loop, [socket, transport, self()])
 
-    %{settings: %Lye.Connection.Settings{}, sender: sender}
+    %{settings: %Lye.Connection.Settings{}, sender: sender, events: events}
   end
 
   # +-----------------------------------------------+
@@ -49,18 +49,24 @@ defmodule Lye.Connection do
   # +---------------------------------------------------------------+
   # Figure 1: Frame Layout
   def send_frame(pid, {type, sid, flags, body}) do
-    GenServer.cast(pid, {:frame, << byte_size(body)::24, type::8, flags::8, 0::1, sid::31, body::binary >> })
+    GenServer.cast(pid, {:send_frame, << byte_size(body)::24, type::8, flags::8, 0::1, sid::31, body::binary >> })
   end
 
-  def handle_cast({:frame, frame}, state) do
+  def handle_cast({:send_frame, frame}, state) do
     send state.sender, {:frame, frame}
     {:noreply, state}
   end
 
-  def recv_loop(socket, transport, event_bus, connection) do
+  def handle_cast({:recv_frame, type, sid, flags, body, connection}, state) do
+    GenEvent.notify(state.events, {:frame, type, sid, flags, body, connection})
+    {:noreply, state}
+  end
+
+  def recv_loop(socket, transport, connection) do
     {:ok, type, flags, sid, body} = Parser.parse_frame(fn(len) -> transport.recv(socket, len, :infinity) end)
 
-    GenEvent.notify(event_bus, {:frame, type, sid, flags, body, connection})
+    GenServer.cast(connection, {:recv_frame, type, sid, flags, body, connection})
+
     # case transport.recv(socket, 0, 5000) do
     #   {:ok, data} ->
     #     transport.send(socket, data)
@@ -68,7 +74,7 @@ defmodule Lye.Connection do
     #   _ ->
     #     :ok = transport.close(socket)
     # end
-    recv_loop(socket, transport, event_bus, connection)
+    recv_loop(socket, transport, connection)
   end
 
   def send_loop(socket, transport) do
