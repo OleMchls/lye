@@ -1,2 +1,2 @@
-%{"hpack": {:hex, :hpack, "1.0.0"},
-  "ranch": {:hex, :ranch, "1.2.1"}}
+%{"hpack": {:hex, :hpack, "1.0.2", "94f6e7214e3184d2ab9670a22c80c80b46651a17e35fd02e5c3c4d2ce2466d02", [:mix], []},
+  "ranch": {:hex, :ranch, "1.2.1", "a6fb992c10f2187b46ffd17ce398ddf8a54f691b81768f9ef5f461ea7e28c762", [:make], []}}
