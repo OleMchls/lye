@@ -13,7 +13,7 @@ defmodule Lye.Parser do
       type::8, flags::8,
       0::1, sid::31
     >>} = recv.(9)
-    {:ok, body} = recv.(length)
+    {:ok, body} = if (length > 0), do: recv.(length), else: {:ok, << >>}
     {:ok, type, flags, sid, body}
   end
 end
