@@ -26,16 +26,20 @@ defmodule Lye.Connection do
   def loop_init(ref, socket, transport, _opts \\ []) do
     :ok = :ranch.accept_ack(ref)
     :ok = Parser.handshake(fn(len) -> transport.recv(socket, len, 10) end)
-    {:ok, events} = GenEvent.start_link([])
-
-    GenEvent.add_handler(events, Lye.Frames.Headers, [4096])
-    GenEvent.add_handler(events, Lye.Frames.Priority, [])
-    GenEvent.add_handler(events, Lye.Frames.Settings, [])
 
     {:ok, sender} = Task.start_link(__MODULE__, :send_loop, [socket, transport])
     {:ok, receiver} = Task.start_link(__MODULE__, :recv_loop, [socket, transport, self()])
 
-    %{settings: %Lye.Connection.Settings{}, sender: sender, events: events}
+    # This time, we don't pass any argument because
+    # the argument will be given when we start the child
+    children = [
+      Supervisor.Spec.worker(Lye.Stream, [], restart: :transient)
+    ]
+
+    # Start the supervisor with our one child
+    {:ok, sup_pid} = Supervisor.start_link(children, strategy: :simple_one_for_one)
+
+    %{settings: %Lye.Connection.Settings{}, sender: sender, stream_handler_sup: sup_pid, stream_map: %{}}
   end
 
   # +-----------------------------------------------+
@@ -49,34 +53,31 @@ defmodule Lye.Connection do
   # +---------------------------------------------------------------+
   # Figure 1: Frame Layout
   def send_frame(pid, {type, sid, flags, body}) do
-    GenServer.cast(pid, {:send_frame, << byte_size(body)::24, type::8, flags::8, 0::1, sid::31, body::binary >> })
+    GenServer.call(pid, {:send_frame, << byte_size(body)::24, type::8, flags::8, 0::1, sid::31, body::binary >> })
   end
 
   def recv_frame(pid, {type, sid, flags, body}) do
-    GenServer.cast(pid, {:recv_frame, type, sid, flags, body})
+    GenServer.call(pid, {:recv_frame, type, sid, flags, body})
   end
 
-  def handle_cast({:send_frame, frame}, state) do
+  def handle_call({:send_frame, frame}, _from, state) do
     send state.sender, {:frame, frame}
     {:noreply, state}
   end
 
-  def handle_cast({:recv_frame, type, sid, flags, body}, state) do
-    GenEvent.notify(state.events, {:frame, type, sid, flags, body, self()})
-    {:noreply, state}
+  def handle_call({:recv_frame, type, sid, flags, body}, _from, state) do
+    stream_map = Map.put_new_lazy(state.stream_map, sid, fn ->
+      {:ok, wrk_pid} = Supervisor.start_child(state.stream_handler_sup, [self(), sid])
+      wrk_pid
+    end)
+    {:ok, stream_pid} = Map.fetch(stream_map, sid)
+    Lye.Stream.process_frame(stream_pid, type, flags, body)
+    {:reply, :ok, state}
   end
 
   def recv_loop(socket, transport, connection) do
     {:ok, type, flags, sid, body} = Parser.parse_frame(fn(len) -> transport.recv(socket, len, :infinity) end)
-    recv_frame(connection, {type, sid, flags, body})
-
-    # case transport.recv(socket, 0, 5000) do
-    #   {:ok, data} ->
-    #     transport.send(socket, data)
-    #     recv_loop(socket, transport);
-    #   _ ->
-    #     :ok = transport.close(socket)
-    # end
+    :ok = recv_frame(connection, {type, sid, flags, body})
     recv_loop(socket, transport, connection)
   end
 
