@@ -30,6 +30,12 @@ defmodule Lye.Connection do
     {:ok, sender} = Task.start_link(__MODULE__, :send_loop, [socket, transport])
     {:ok, receiver} = Task.start_link(__MODULE__, :recv_loop, [socket, transport, self()])
 
+    # TODO: find better / cleaner way to init connection settings
+    send(sender, {:frame, build_frame(0x4, 0, 0, <<
+      0x3::16, 100::32,
+      0x4::16, 65535::32
+    >>)})
+
     # This time, we don't pass any argument because
     # the argument will be given when we start the child
     children = [
