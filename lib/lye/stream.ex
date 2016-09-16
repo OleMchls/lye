@@ -14,8 +14,14 @@ defmodule Lye.Stream do
   end
 
   def handle_cast({:process_frame, type, flags, body}, state) do
-    IO.puts "Frame type(#{type}) not implemented!"
-    IO.inspect handle_frame(type, flags, body)
+    IO.puts "[Stream #{state.stream}] recv frame type #{type}"
+
+    case handle_frame(type, flags, body) do
+      {:send_frame, frame} ->
+        Lye.Connection.send_frame(state.connection, frame)
+      other -> IO.inspect other
+    end
+
     {:noreply, state}
   end
 
@@ -51,7 +57,9 @@ defmodule Lye.Stream do
   #  |                        Value (32)                             |
   #  +---------------------------------------------------------------+
   # Figure 10: Setting Format
+  def handle_frame(0x4, 0x1, body), do: "nthing (client acks settings)"
   def handle_frame(0x4, flags, body) do
-    "Figure 10: Setting Format"
+    IO.inspect "XXX Figure 10: Setting Format"
+    {:send_frame, {0x4, 0, 0x1, << >>}}
   end
 end
