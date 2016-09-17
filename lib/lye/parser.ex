@@ -4,7 +4,6 @@ defmodule Lye.Parser do
 
   def handshake(recv) do
     {:ok, @init_str} = recv.(byte_size(@init_str))
-    :ok
   end
 
   def parse_frame(recv) do

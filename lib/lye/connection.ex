@@ -25,7 +25,7 @@ defmodule Lye.Connection do
 
   def loop_init(ref, socket, transport, _opts \\ []) do
     :ok = :ranch.accept_ack(ref)
-    :ok = Parser.handshake(fn(len) -> transport.recv(socket, len, 10) end)
+    {:ok, _} = Parser.handshake(fn(len) -> transport.recv(socket, len, 10) end)
 
     {:ok, sender} = Task.start_link(__MODULE__, :send_loop, [socket, transport])
     {:ok, receiver} = Task.start_link(__MODULE__, :recv_loop, [socket, transport, self()])
