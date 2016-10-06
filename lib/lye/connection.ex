@@ -45,7 +45,9 @@ defmodule Lye.Connection do
     # Start the supervisor with our one child
     {:ok, sup_pid} = Supervisor.start_link(children, strategy: :simple_one_for_one)
 
-    %{settings: %Lye.Connection.Settings{}, sender: sender, stream_handler_sup: sup_pid, stream_map: %{}}
+    initial_settings = %{0x1 => 4096, 0x2 => 1, 0x3 => 100, 0x4 => 65535, 0x5 => 16384, 0x6 => :infinity}
+
+    %{settings: initial_settings, sender: sender, stream_handler_sup: sup_pid, stream_map: %{}}
   end
 
   def send_frame(pid, {type, sid, flags, body}) do
@@ -56,6 +58,10 @@ defmodule Lye.Connection do
     GenServer.call(pid, {:recv_frame, type, sid, flags, body})
   end
 
+  def update_setting(pid, key, value) do
+    GenServer.call(pid, {:update_settings, key, value})
+  end
+
   def handle_cast({:send_frame, frame}, state) do
     send state.sender, {:frame, frame}
     {:noreply, state}
@@ -63,12 +69,17 @@ defmodule Lye.Connection do
 
   def handle_call({:recv_frame, type, sid, flags, body}, _from, state) do
     stream_map = Map.put_new_lazy(state.stream_map, sid, fn ->
-      {:ok, wrk_pid} = Supervisor.start_child(state.stream_handler_sup, [self(), sid])
+      stream = Lye.Stream.create(self(), sid)
+      {:ok, wrk_pid} = Supervisor.start_child(state.stream_handler_sup, [stream])
       wrk_pid
     end)
     {:ok, stream_pid} = Map.fetch(stream_map, sid)
     Lye.Stream.process_frame(stream_pid, type, flags, body)
     {:reply, :ok, state}
+  end
+
+  def handle_call({:update_settings, key, value}, _from, %{settings: settings} = state) do
+    {:reply, :ok, %{state | settings: %{settings | key => value}}}
   end
 
   def recv_loop(socket, transport, connection) do
